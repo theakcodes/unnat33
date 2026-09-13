@@ -46,7 +46,9 @@ class Settings:
         "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173",
     )
 
-    # Server-Side Anthropic Claude API Key for Qualitative Market Intelligence & DPR
+    # Server-Side Groq AI & Anthropic Claude API Key for Qualitative Market Intelligence & DPR
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
+    GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
     CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-20241022")
     CLAUDE_MAX_TOKENS: int = int(os.getenv("CLAUDE_MAX_TOKENS", "2000"))
@@ -73,12 +75,15 @@ class Settings:
     # Sentry DSN
     SENTRY_DSN: str = os.getenv("SENTRY_DSN", "")
 
-    if not ANTHROPIC_API_KEY:
-        # Check local frontend .env if present during unified local development
-        _fe_env = BASE_DIR / "frontend" / ".env"
-        if _fe_env.exists():
-            load_dotenv(dotenv_path=_fe_env, override=False)
-            ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+    if not GROQ_API_KEY or not ANTHROPIC_API_KEY:
+        # Check local frontend .env or .env.local if present during unified local development
+        for _env_file in [BASE_DIR / "frontend" / ".env.local", BASE_DIR / "frontend" / ".env"]:
+            if _env_file.exists():
+                load_dotenv(dotenv_path=_env_file, override=False)
+                if not GROQ_API_KEY:
+                    GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+                if not ANTHROPIC_API_KEY:
+                    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
     @property
     def CORS_ORIGINS(self) -> List[str]:

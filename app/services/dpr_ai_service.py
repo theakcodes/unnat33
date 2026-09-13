@@ -99,7 +99,9 @@ class DPRAIService:
     """Service to compose bank-grade DPR qualitative narrative with AI or deterministic fallback."""
 
     def __init__(self):
-        self.api_key = getattr(settings, "ANTHROPIC_API_KEY", "") or ""
+        self.groq_api_key = getattr(settings, "GROQ_API_KEY", "") or ""
+        self.groq_model = getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile") or "llama-3.3-70b-versatile"
+        self.anthropic_api_key = getattr(settings, "ANTHROPIC_API_KEY", "") or ""
 
     async def compose_dpr_narrative(
         self,
@@ -115,23 +117,57 @@ class DPRAIService:
     ) -> Dict[str, Any]:
         """
         Compose qualitative narrative for DPR.
-        Attempts Claude 3.5 Sonnet; falls back cleanly to deterministic empirical templates upon error.
+        Attempts Groq AI (Llama 3.3 70B), then Claude 3.5 Sonnet; falls back cleanly to deterministic empirical templates upon error.
         """
-        if self.api_key and self.api_key.strip():
-            try:
-                user_prompt = self._build_prompt(
-                    evidence=evidence,
-                    promoter_name=promoter_name,
-                    project_name=project_name,
-                    program_name=program_name,
-                    total_project_cost=total_project_cost,
-                    promoter_equity=promoter_equity,
-                    bank_loan=bank_loan,
-                    subsidy_amount=subsidy_amount,
-                    monthly_emi=monthly_emi,
-                )
+        user_prompt = self._build_prompt(
+            evidence=evidence,
+            promoter_name=promoter_name,
+            project_name=project_name,
+            program_name=program_name,
+            total_project_cost=total_project_cost,
+            promoter_equity=promoter_equity,
+            bank_loan=bank_loan,
+            subsidy_amount=subsidy_amount,
+            monthly_emi=monthly_emi,
+        )
 
-                client = anthropic.AsyncAnthropic(api_key=self.api_key.strip(), timeout=20.0)
+        # 1. Attempt Groq AI (Llama 3.3 70B - Ultra fast, high limits)
+        if self.groq_api_key and self.groq_api_key.strip():
+            try:
+                import httpx
+                headers = {
+                    "Authorization": f"Bearer {self.groq_api_key.strip()}",
+                    "Content-Type": "application/json",
+                }
+                payload = {
+                    "model": self.groq_model,
+                    "messages": [
+                        {"role": "system", "content": DPR_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 2500,
+                    "response_format": {"type": "json_object"},
+                }
+                async with httpx.AsyncClient(timeout=20.0) as client:
+                    resp = await client.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        raw = data["choices"][0]["message"]["content"].strip()
+                        if raw.startswith("```"):
+                            raw = raw.strip("`").removeprefix("json").strip()
+                        parsed = json.loads(raw)
+                        logger.info("DPR narrative successfully composed via Groq AI (%s).", self.groq_model)
+                        return parsed
+                    else:
+                        logger.warning("Groq API returned error %s: %s", resp.status_code, resp.text)
+            except Exception as e:
+                logger.warning("Groq DPR composition failed (%s: %s). Trying secondary provider.", type(e).__name__, e)
+
+        # 2. Attempt Anthropic Claude if key is present
+        if self.anthropic_api_key and self.anthropic_api_key.strip():
+            try:
+                client = anthropic.AsyncAnthropic(api_key=self.anthropic_api_key.strip(), timeout=20.0)
                 message = await client.messages.create(
                     model="claude-3-5-sonnet-20241022",
                     max_tokens=2500,

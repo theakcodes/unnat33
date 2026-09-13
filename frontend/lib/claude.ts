@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { getGroqClient, DEFAULT_GROQ_MODEL } from './groq';
 import { logger } from './logger';
 
 function getAnthropicClient() {
@@ -53,19 +54,7 @@ export interface FinancialInput {
 
 // 1. Business Plan Generator Service
 export async function generateBusinessPlanAI(input: BusinessPlanInput) {
-  const anthropic = getAnthropicClient();
-  if (anthropic) {
-    try {
-      logger.info('🤖 Invoking Claude 3.5 Sonnet for Business Plan Generation...');
-      const response = await anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 2500,
-        temperature: 0.3,
-        system: BASE_SYSTEM_PROMPT,
-        messages: [
-          {
-            role: 'user',
-            content: `Generate a qualitative business plan advisory and operational implementation plan for:
+  const userPrompt = `Generate a qualitative business plan advisory and operational implementation plan for:
 Business Type: ${input.businessType} (${input.subType || 'General'})
 Experience Level: ${input.experienceLevel}
 Target Market: ${input.targetMarket}
@@ -99,9 +88,47 @@ Respond ONLY with JSON matching this structure:
     { "risk": "string", "impact": "High" | "Medium" | "Low", "mitigation": "string" }
   ],
   "relevantSchemesPreview": ["string"]
-}`,
-          },
+}`;
+
+  // Provider 1: Groq AI (Llama 3.3 70B - Ultra fast, high limits)
+  const groq = getGroqClient();
+  if (groq) {
+    try {
+      logger.info('🚀 Invoking Groq AI (Llama 3.3 70B) for Business Plan Generation...');
+      const response = await groq.chat.completions.create({
+        model: process.env.GROQ_MODEL || DEFAULT_GROQ_MODEL,
+        messages: [
+          { role: 'system', content: BASE_SYSTEM_PROMPT },
+          { role: 'user', content: userPrompt }
         ],
+        temperature: 0.3,
+        response_format: { type: 'json_object' }
+      });
+
+      const text = response.choices[0]?.message?.content || '';
+      const parsed = JSON.parse(text);
+      return {
+        ...parsed,
+        feasibilityScore: null,
+        feasibilityStatus: 'pending_dpr_audit',
+        financialProjections: null,
+      };
+    } catch (err) {
+      logger.warn('⚠️ Groq API call error, trying secondary provider:', err);
+    }
+  }
+
+  // Provider 2: Anthropic Claude
+  const anthropic = getAnthropicClient();
+  if (anthropic) {
+    try {
+      logger.info('🤖 Invoking Claude 3.5 Sonnet for Business Plan Generation...');
+      const response = await anthropic.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 2500,
+        temperature: 0.3,
+        system: BASE_SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: userPrompt }],
       });
 
       const text = response.content[0].type === 'text' ? response.content[0].text : '';
@@ -170,18 +197,7 @@ export async function generateFinancialAdviceAI(input: FinancialInput) {
   const maxAffordableEMI = Math.max(2000, Math.round(netAvailableIncome * 0.5));
   const amount = input.loanNeeded || 300000;
 
-  if (anthropic) {
-    try {
-      logger.info('🤖 Invoking Claude 3.5 Sonnet for Financial Advisory...');
-      const response = await anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 2500,
-        temperature: 0.2,
-        system: BASE_SYSTEM_PROMPT,
-        messages: [
-          {
-            role: 'user',
-            content: `Analyze micro-finance loan structuring for:
+  const financialPrompt = `Analyze micro-finance loan structuring for:
 Monthly Income: ₹${input.monthlyIncome}
 Monthly Expenses: ₹${input.monthlyExpenses}
 Existing EMIs: ₹${existingEmiTotal}
@@ -202,7 +218,43 @@ Respond ONLY with valid JSON structure:
   },
   "preApprovalChecklist": ["string"],
   "nextSteps": ["string"]
-}`
+}`;
+
+  // Provider 1: Groq AI
+  const groq = getGroqClient();
+  if (groq) {
+    try {
+      logger.info('🚀 Invoking Groq AI for Financial Advisory...');
+      const response = await groq.chat.completions.create({
+        model: process.env.GROQ_MODEL || DEFAULT_GROQ_MODEL,
+        messages: [
+          { role: 'system', content: BASE_SYSTEM_PROMPT },
+          { role: 'user', content: financialPrompt }
+        ],
+        temperature: 0.2,
+        response_format: { type: 'json_object' }
+      });
+
+      const text = response.choices[0]?.message?.content || '';
+      return JSON.parse(text);
+    } catch (e) {
+      logger.warn('⚠️ Groq financial API error, trying secondary:', e);
+    }
+  }
+
+  // Provider 2: Anthropic Claude
+  if (anthropic) {
+    try {
+      logger.info('🤖 Invoking Claude 3.5 Sonnet for Financial Advisory...');
+      const response = await anthropic.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 2500,
+        temperature: 0.2,
+        system: BASE_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: 'user',
+            content: financialPrompt
           }
         ]
       });

@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Anthropic from '@anthropic-ai/sdk';
+import { getGroqClient, DEFAULT_GROQ_MODEL } from './groq';
 import { logger } from './logger';
 
 export interface ChatMessageItem {
@@ -17,9 +18,10 @@ export interface UserAdvisorContext {
 
 /**
  * Multi-Provider Generative AI Engine
- * 1. Primary: Anthropic Claude 3.5 Sonnet / Haiku
- * 2. Secondary: Google Gemini 1.5 Flash
- * 3. Autonomous Conversational Advisor (Resilient, hyper-local, zero broken templates)
+ * 1. Primary: Groq AI (Llama 3.3 70B Versatile - Ultra-fast, unlimited tokens)
+ * 2. Secondary: Anthropic Claude 3.5 Sonnet / Haiku
+ * 3. Tertiary: Google Gemini 1.5 Flash
+ * 4. Autonomous Conversational Advisor (Resilient, hyper-local, zero broken templates)
  */
 export async function generateAdvisorResponse(
   messages: ChatMessageItem[],
@@ -37,7 +39,42 @@ export async function generateAdvisorResponse(
   }
 
   // ------------------------------------------------------------------
-  // Provider 1: Anthropic Claude 3.5 Sonnet / Haiku
+  // Provider 1: Groq AI (Llama 3.3 70B Versatile / Llama 3.1 8B Instant)
+  // Blazing fast inference, generous limits
+  // ------------------------------------------------------------------
+  const groq = getGroqClient();
+  if (groq) {
+    try {
+      const modelName = process.env.GROQ_MODEL || DEFAULT_GROQ_MODEL;
+      const groqMessages = [
+        {
+          role: 'system' as const,
+          content: `You are UnnatE's expert AI business advisor for Indian micro-entrepreneurs in ${dist}, ${state}. Speak simply, practically, and empathetically in ${isHi ? 'Hindi (Devanagari script)' : 'English'}. Provide thorough, structured, actionable guidance with bullet points and clear steps. Ground your advice in real Indian government schemes (PMEGP, MUDRA, PM Vishwakarma, PM SVANidhi, Stand-Up India, Udyam registration).`
+        },
+        ...messages.map((m) => ({
+          role: (m.role === 'assistant' ? 'assistant' : 'user') as 'assistant' | 'user',
+          content: m.content,
+        }))
+      ];
+
+      const completion = await groq.chat.completions.create({
+        model: modelName,
+        messages: groqMessages,
+        temperature: 0.6,
+        max_tokens: 1500,
+      });
+
+      const text = completion.choices[0]?.message?.content || '';
+      if (text && text.trim().length > 20) {
+        return text;
+      }
+    } catch (err: any) {
+      logger.warn('Groq API invocation failed, trying secondary providers:', err?.message || err);
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Provider 2: Anthropic Claude 3.5 Sonnet / Haiku
   // ------------------------------------------------------------------
   const anthropicKey = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
   if (anthropicKey && anthropicKey.trim().length > 10) {

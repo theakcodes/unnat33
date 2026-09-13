@@ -49,7 +49,9 @@ class MarketResearchLLMService:
     """Service providing qualitative market interpretation via Anthropic Claude or deterministic fallback."""
 
     def __init__(self):
-        self.api_key = getattr(settings, "ANTHROPIC_API_KEY", "") or ""
+        self.groq_api_key = getattr(settings, "GROQ_API_KEY", "") or ""
+        self.groq_model = getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile") or "llama-3.3-70b-versatile"
+        self.anthropic_api_key = getattr(settings, "ANTHROPIC_API_KEY", "") or ""
 
     async def generate_qualitative_analysis(
         self,
@@ -63,22 +65,73 @@ class MarketResearchLLMService:
     ) -> QualitativeLLMAnalysis:
         """
         Generate qualitative market analysis.
-        Attempts server-side Anthropic Claude invocation; falls back cleanly to deterministic synthesis upon any error.
+        Attempts Groq AI (Llama 3.3 70B), then server-side Anthropic Claude; falls back cleanly to deterministic synthesis upon any error.
         """
-        # 1. Attempt Anthropic Claude if key is present
-        if self.api_key and self.api_key.strip():
+        user_prompt = self._build_prompt(
+            district_name=district_name,
+            state_name=state_name,
+            market_context=market_context,
+            ml_analysis=ml_analysis,
+            weather_context=weather_context,
+            business_profile=business_profile,
+            operational_cautions=operational_cautions,
+        )
+
+        # 1. Attempt Groq AI (Llama 3.3 70B) if key is present
+        if self.groq_api_key and self.groq_api_key.strip():
             try:
-                user_prompt = self._build_prompt(
-                    district_name=district_name,
-                    state_name=state_name,
-                    market_context=market_context,
-                    ml_analysis=ml_analysis,
-                    weather_context=weather_context,
-                    business_profile=business_profile,
-                    operational_cautions=operational_cautions,
+                import httpx
+                headers = {
+                    "Authorization": f"Bearer {self.groq_api_key.strip()}",
+                    "Content-Type": "application/json",
+                }
+                payload = {
+                    "model": self.groq_model,
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": 0.2,
+                    "max_tokens": 1500,
+                    "response_format": {"type": "json_object"},
+                }
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    resp = await client.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        raw_text = data["choices"][0]["message"]["content"].strip()
+                        if raw_text.startswith("```"):
+                            raw_text = raw_text.strip("`").removeprefix("json").strip()
+
+                        parsed = json.loads(raw_text)
+
+                        return QualitativeLLMAnalysis(
+                            is_available=True,
+                            source=f"groq-{self.groq_model}",
+                            market_interpretation=str(parsed.get("market_interpretation", "")),
+                            opportunities=list(parsed.get("opportunities", [])),
+                            operational_considerations=list(parsed.get("operational_considerations", [])),
+                            competitive_considerations=list(parsed.get("competitive_considerations", [])),
+                            risks=list(parsed.get("risks", [])),
+                            practical_recommendations=list(parsed.get("practical_recommendations", [])),
+                            qualitative_notes=[
+                                f"Qualitative synthesis generated server-side via Groq AI ({self.groq_model}).",
+                                "Grounding guarantee: Quantitative references constrained to authoritative PostgreSQL and Open-Meteo inputs.",
+                            ],
+                        )
+                    else:
+                        logger.warning("Groq API returned error %s: %s", resp.status_code, resp.text)
+            except Exception as e:
+                logger.warning(
+                    "Groq LLM invocation failed (%s: %s). Trying secondary provider.",
+                    type(e).__name__,
+                    e,
                 )
 
-                client = anthropic.AsyncAnthropic(api_key=self.api_key.strip(), timeout=15.0)
+        # 2. Attempt Anthropic Claude if key is present
+        if self.anthropic_api_key and self.anthropic_api_key.strip():
+            try:
+                client = anthropic.AsyncAnthropic(api_key=self.anthropic_api_key.strip(), timeout=15.0)
                 message = await client.messages.create(
                     model="claude-3-5-sonnet-20241022",
                     max_tokens=1000,
