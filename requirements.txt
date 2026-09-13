@@ -1,0 +1,30 @@
+# Core Web Framework & ASGI Server
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+
+# Database, ORM & Migrations
+SQLAlchemy>=2.0.30
+psycopg[binary]>=3.2.0
+alembic>=1.13.0
+
+# Data Validation & Configuration
+pydantic>=2.8.0
+python-dotenv>=1.0.0
+
+# Security, Password Hashing & JWT
+pwdlib[argon2]>=0.2.0
+pyjwt>=2.8.0
+python-multipart>=0.0.9
+
+# Testing & HTTP Client
+pytest>=8.0.0
+httpx>=0.27.0
+
+# ML & Analytical Dependencies (Market Research Intelligence)
+pandas>=2.2.0
+numpy>=1.26.0
+scikit-learn>=1.5.0
+joblib>=1.4.0
+
+# LLM Intelligence Pipeline (Anthropic Claude API Server-Side)
+anthropic>=0.30.0

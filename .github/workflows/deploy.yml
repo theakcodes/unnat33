@@ -1,0 +1,84 @@
+name: SIH26091 Production CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  backend-tests:
+    name: Backend Test Suite & Type Check
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: goi_schemes
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run Backend Pytest Suite
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/goi_schemes
+          ENVIRONMENT: testing
+          JWT_SECRET_KEY: test_secret_key_ci_cd
+        run: |
+          pytest -v
+
+  frontend-build:
+    name: Frontend Lint & Build Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Generate Prisma Client
+        run: |
+          cd frontend
+          npx prisma generate
+
+      - name: Run Frontend Build
+        env:
+          NEXT_PUBLIC_BACKEND_URL: http://127.0.0.1:8000
+          BACKEND_URL: http://127.0.0.1:8000
+        run: |
+          cd frontend
+          npm run build
