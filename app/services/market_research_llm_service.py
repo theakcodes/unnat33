@@ -50,7 +50,7 @@ class MarketResearchLLMService:
 
     def __init__(self):
         self.groq_api_key = getattr(settings, "GROQ_API_KEY", "") or ""
-        self.groq_model = getattr(settings, "GROQ_MODEL", "llama-3.3-70b-versatile") or "llama-3.3-70b-versatile"
+        self.groq_model = getattr(settings, "GROQ_MODEL", "qwen/qwen3.8-27b") or "qwen/qwen3.8-27b"
         self.anthropic_api_key = getattr(settings, "ANTHROPIC_API_KEY", "") or ""
 
     async def generate_qualitative_analysis(

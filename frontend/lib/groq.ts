@@ -8,4 +8,4 @@ export function getGroqClient(): Groq | null {
   return new Groq({ apiKey: apiKey.trim() });
 }
 
-export const DEFAULT_GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+export const DEFAULT_GROQ_MODEL = process.env.GROQ_MODEL || 'qwen/qwen3.8-27b';
