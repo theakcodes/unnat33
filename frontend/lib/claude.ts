@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { logger } from './logger';
 
 function getAnthropicClient() {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
   if (!apiKey || apiKey.trim() === '') return null;
   return new Anthropic({
     apiKey: apiKey.trim(),
