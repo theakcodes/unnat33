@@ -69,6 +69,8 @@ export default function SchemesPage() {
             project_cost: data.business?.projectCost || data.business?.estimatedCapital,
             requested_loan_amount: defaultTarget,
           });
+        } else {
+          fetchSchemes({});
         }
       })
       .catch((err) => {

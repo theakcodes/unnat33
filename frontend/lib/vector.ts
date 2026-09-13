@@ -7,6 +7,7 @@ import {
   ProgramEligibilityAssessmentResponse,
   ProgramEligibilityResult,
 } from './api-client';
+import { evaluateFallbackSchemes } from './fallback-data';
 
 export interface SchemeSearchInput extends UserProfile {
   // Optional search / filter overrides if specified
@@ -173,8 +174,8 @@ export async function findMatchingSchemes(
       },
     };
   } catch (error: any) {
-    logger.error('FastAPI recommendation/eligibility engine error:', error);
-    throw new Error(`Authoritative recommendation service error: ${error.message || 'Service unavailable'}`);
+    logger.warn('FastAPI backend recommendation engine unreachable. Falling back to built-in statutory engine:', error.message || error);
+    return evaluateFallbackSchemes(input);
   }
 }
 

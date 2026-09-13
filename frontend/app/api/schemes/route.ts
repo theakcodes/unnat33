@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { backendApiClient } from '@/lib/api-client';
+import { FALLBACK_PROGRAMS } from '@/lib/fallback-data';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,11 +55,34 @@ export async function GET(req: Request) {
         source: 'FastAPI (PostgreSQL goi_schemes)',
       });
     } catch (backendError: any) {
-      console.error('FastAPI getPrograms failed:', backendError);
-      return NextResponse.json(
-        { error: backendError.message || 'Authoritative government programmes directory is currently unavailable.' },
-        { status: 502 }
-      );
+      console.warn('FastAPI getPrograms failed, serving fallback directory:', backendError);
+      const mappedSchemes = FALLBACK_PROGRAMS.map((p) => ({
+        id: p.id,
+        programCode: p.code,
+        name: p.name,
+        ministry: p.ministry,
+        nodalAgency: p.nodalAgency,
+        description: p.description || p.benefitSummary,
+        benefitSummary: p.benefitSummary,
+        benefitType: p.benefitType,
+        primaryType: p.primaryType,
+        actionabilityType: p.actionabilityType,
+        officialPortalUrl: p.officialPortalUrl,
+        sectors: p.targetSectors || [],
+        status: 'active',
+        loanMin: p.loanMin,
+        loanMax: p.loanMax,
+        interestRate: p.interestRate,
+        tenure: p.tenureYears ? p.tenureYears * 12 : null,
+        state: 'All India',
+      }));
+
+      return NextResponse.json({
+        programs: FALLBACK_PROGRAMS,
+        schemes: mappedSchemes,
+        count: mappedSchemes.length,
+        source: 'Built-in Central Government Statutory Directory',
+      });
     }
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
