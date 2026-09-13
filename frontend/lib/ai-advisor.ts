@@ -39,7 +39,7 @@ export async function generateAdvisorResponse(
   }
 
   // ------------------------------------------------------------------
-  // Provider 1: Groq AI (Llama 3.3 70B Versatile / Llama 3.1 8B Instant)
+  // Provider 1: Groq AI (Qwen 3.8 27B / Llama 3.3 70B)
   // Blazing fast inference, generous limits
   // ------------------------------------------------------------------
   const groq = getGroqClient();
@@ -49,7 +49,7 @@ export async function generateAdvisorResponse(
       const groqMessages = [
         {
           role: 'system' as const,
-          content: `You are UnnatE's expert AI business advisor for Indian micro-entrepreneurs in ${dist}, ${state}. Speak simply, practically, and empathetically in ${isHi ? 'Hindi (Devanagari script)' : 'English'}. Provide thorough, structured, actionable guidance with bullet points and clear steps. Ground your advice in real Indian government schemes (PMEGP, MUDRA, PM Vishwakarma, PM SVANidhi, Stand-Up India, Udyam registration).`
+          content: `You are UnnatE's expert AI business advisor for Indian micro-entrepreneurs in ${dist}, ${state}. Speak simply, practically, and empathetically in ${isHi ? 'Hindi (Devanagari script)' : 'English'}. Provide thorough, structured, actionable guidance with bullet points and clear steps. Ground your advice in real Indian government schemes (PMEGP, MUDRA, PM Vishwakarma, PM SVANidhi, Stand-Up India, Udyam registration). If the user asks general, casual, or frustrated questions, always respond politely, respectfully, and helpfully without breaking character.`
         },
         ...messages.map((m) => ({
           role: (m.role === 'assistant' ? 'assistant' : 'user') as 'assistant' | 'user',
@@ -57,15 +57,30 @@ export async function generateAdvisorResponse(
         }))
       ];
 
-      const completion = await groq.chat.completions.create({
-        model: modelName,
-        messages: groqMessages,
-        temperature: 0.6,
-        max_tokens: 1500,
-      });
+      let completion;
+      try {
+        completion = await groq.chat.completions.create({
+          model: modelName,
+          messages: groqMessages,
+          temperature: 0.6,
+          max_tokens: 1500,
+        });
+      } catch (err: any) {
+        if (err?.status === 404 || err?.message?.includes('model_not_found') || err?.message?.includes('does not exist')) {
+          logger.warn(`Model ${modelName} not available, retrying with qwen/qwen3.8-27b...`);
+          completion = await groq.chat.completions.create({
+            model: 'qwen/qwen3.8-27b',
+            messages: groqMessages,
+            temperature: 0.6,
+            max_tokens: 1500,
+          });
+        } else {
+          throw err;
+        }
+      }
 
       const text = completion.choices[0]?.message?.content || '';
-      if (text && text.trim().length > 20) {
+      if (text && text.trim().length > 5) {
         return text;
       }
     } catch (err: any) {
@@ -128,6 +143,25 @@ export async function generateAdvisorResponse(
   // High-fidelity fallback providing tailored, domain-specific advice
   // ------------------------------------------------------------------
   const query = lastUserMsg.toLowerCase().trim();
+
+  // 0. Guardrail: Profanity / Abusive Language / Hostility
+  const isAbusive = /\b(fuck|f\*\*k|bitch|bastard|asshole|idiot|stupid|shut\s*up|chutiya|madarchod|bhenchod|gandu|harami|kamina)\b/i.test(query)
+    || query.includes('fuck') || query.includes('bitch') || query.includes('idiot');
+  if (isAbusive) {
+    if (isHi) {
+      return `मैं आपकी व्यावसायिक सफलता और सहायता के लिए यहाँ उपस्थित हूँ। यदि आपके मन में कोई असंतोष, संदेह या प्रश्न है, तो कृपया साझा करें। मैं सरकारी योजनाओं, ऋण सहायता, अथवा विस्तृत परियोजना रिपोर्ट (DPR) तैयार करने में आपकी पूरी सहायता करूँगा।`;
+    }
+    return `I am here to assist you professionally with your business, government schemes, and financial planning. If you have any questions or if something isn't working as expected, please let me know and I will be glad to assist you.`;
+  }
+
+  // 0.1 Gratitude / Appreciation
+  const isThanks = /^(thanks|thank\s*you|dhanyawad|shukriya|great|awesome|good\s*job|cool)\b/i.test(query);
+  if (isThanks) {
+    if (isHi) {
+      return `आपका बहुत-बहुत धन्यवाद! 🙏 यदि आपको व्यवसाय, ऋण EMI, अथवा 'DPR Builder' से संबंधित और कोई सहायता चाहिए, तो कभी भी पूछ सकते हैं। आपके व्यवसाय के उज्ज्वल भविष्य की शुभकामनाएं!`;
+    }
+    return `You're very welcome! 🙏 Feel free to ask if you need further guidance on loan eligibility, business plan structuring, or downloading your 13-section bank DPR. Wishing your business great success!`;
+  }
 
   // 1. Greetings & Introductions
   const isGreeting = /^(hello|hi|hey|namaste|pranam|good\s*(morning|afternoon|evening|day)|greetings|who\s*are\s*you|kya\s*hal|halo)/i.test(query)
@@ -381,6 +415,27 @@ export async function generateAdvisorResponse(
 
   // 6. General / Contextual Open-Ended Inquiries
   const sanitizedQuery = lastUserMsg.replace(/[*_`#]/g, '').trim();
+  const hasBusinessContext = /(business|loan|credit|subsidy|scheme|startup|shop|store|trade|factory|mill|farm|dairy|product|service|mandi|market|dpr|bank|money|capital|cost|vyapar|udyam|kosh|paisa|rin|invest|profit|turnover|equipment|yojana)/i.test(query);
+
+  if (!hasBusinessContext && query.split(/\s+/).length <= 4) {
+    if (isHi) {
+      return `### 💡 UnnatE AI व्यावसायिक सलाहकार (${dist}, ${state})\n\n` +
+        `मैं आपके सूक्ष्म उद्यम और नए व्यवसाय के लिए निम्नलिखित मुख्य क्षेत्रों में सहायता प्रदान करता हूँ:\n\n` +
+        `• 🏛️ **सरकारी सब्सिडी योजनाएं:** PMEGP (15%–35% सब्सिडी), मुद्रा योजना (₹10 लाख तक बिना गारंटी ऋण), और PM विश्वकर्मा।\n` +
+        `• 💰 **ऋण EMI और ब्याज दर गणना:** अपने बजट के अनुसार सुरक्षित 3, 5, या 7 साल की किश्तों की जांच करें।\n` +
+        `• 📊 **13-अनुभाग बैंक DPR रिपोर्ट:** बैंक लोन स्वीकृति हेतु 60 सेकंड में आधिकारिक प्रोजेक्ट रिपोर्ट बनाएं।\n` +
+        `• 📜 **लाइसेंस एवं चेकलिस्ट:** Udyam पंजीकरण, ट्रेड लाइसेंस, और FSSAI की पूरी प्रक्रिया।\n\n` +
+        `👉 *कृपया अपने व्यवसाय के प्रकार या ऋण आवश्यकता से संबंधित प्रश्न पूछें!*`;
+    }
+
+    return `### 💡 UnnatE AI Business Advisory for ${dist}, ${state}\n\n` +
+      `I specialize in helping micro-entrepreneurs and business owners with:\n\n` +
+      `• 🏛️ **Government Subsidies & Schemes:** PMEGP (15%–35% capital grant), MUDRA Yojana, and PM Vishwakarma.\n` +
+      `• 💰 **Loan EMI Structuring:** Instant monthly repayment schedules for 3, 5, and 7-year terms.\n` +
+      `• 📊 **13-Section Detailed Project Report (DPR):** Bank-ready technical and financial feasibility reports.\n` +
+      `• 📜 **Statutory Registrations:** Udyam MSME, FSSAI food licenses, and municipal trade permits.\n\n` +
+      `👉 *Please tell me what type of business you run or what loan/subsidy you would like to explore!*`;
+  }
 
   if (isHi) {
     return `### 💡 ${dist}, ${state} के लिए रणनीतिक AI व्यावसायिक मार्गदर्शन:\n\n` +
