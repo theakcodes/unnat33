@@ -106,6 +106,19 @@ export async function PUT(req: Request) {
     } = body;
 
     // --- Validation (Non-business-logic, input integrity only) ---
+    if (phone !== undefined && phone !== null && phone !== '') {
+      const cleanPhone = phone.toString().trim();
+      if (!/^\d{10}$/.test(cleanPhone)) {
+        return NextResponse.json({ error: 'Please enter a valid 10-digit mobile number' }, { status: 400 });
+      }
+      const existingUserWithPhone = await prisma.user.findFirst({
+        where: { phone: cleanPhone, NOT: { id: user.id } },
+      });
+      if (existingUserWithPhone) {
+        return NextResponse.json({ error: 'Mobile number is already registered to another user' }, { status: 400 });
+      }
+    }
+
     if (age !== undefined && age !== null && age !== '') {
       const ageNum = parseInt(age.toString(), 10);
       if (isNaN(ageNum) || ageNum < 14 || ageNum > 120) {
@@ -142,6 +155,7 @@ export async function PUT(req: Request) {
       data: {
         ...(name !== undefined && { name }),
         ...(email !== undefined && { email: email === '' ? null : email }),
+        ...(phone !== undefined && phone !== '' && { phone: phone.toString().trim() }),
         ...(age !== undefined && { age: age === null || age === '' ? null : parseInt(age.toString(), 10) }),
         ...(language !== undefined && { language }),
         ...(state !== undefined && { state }),

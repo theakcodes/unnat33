@@ -174,6 +174,7 @@ export default function ProfilePage() {
       const payload = {
         name: form.name.trim() || undefined,
         email: form.email.trim() || null,
+        phone: form.phone.trim() || undefined,
         age: form.age ? parseInt(form.age) : null,
         language: form.language,
         state: form.state.trim() || undefined,
@@ -359,10 +360,11 @@ export default function ProfilePage() {
                   <div className="relative">
                     <Phone className="w-4 h-4 text-[#94A3B8] absolute left-3 top-2.5" />
                     <input
-                      type="text"
-                      disabled
+                      type="tel"
                       value={form.phone}
-                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-[#E2E8F0] text-xs font-medium bg-[#F8FAFC] text-[#64748B] cursor-not-allowed"
+                      onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-[#DCE3EA] text-xs font-medium text-[#0B1736] focus:outline-none focus:ring-2 focus:ring-[#159A68]/20 focus:border-[#159A68] transition-all"
+                      placeholder="10-digit mobile number"
                     />
                   </div>
                 </div>

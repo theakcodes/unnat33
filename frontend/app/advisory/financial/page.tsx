@@ -5,10 +5,12 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import Sidebar from '@/components/Sidebar';
 import { useLanguage } from '@/lib/i18n/useLanguage';
+import { useAppStore } from '@/lib/store';
 import { BadgeIndianRupee, Plus, Trash2, ArrowRight, Loader2, Building2, AlertCircle } from 'lucide-react';
 
 function FinancialAdvisorForm() {
   const { t } = useLanguage();
+  const { user, business } = useAppStore();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -75,21 +77,28 @@ function FinancialAdvisorForm() {
     fetch('/api/schemes?limit=60')
       .then((res) => res.json())
       .then((data) => {
-        if (data.programs) {
-          setAvailablePrograms(data.programs);
+        const progList = Array.isArray(data) ? data : (data.programs || data.schemes || []);
+        if (progList.length > 0) {
+          setAvailablePrograms(progList);
           // If no program selected from URL, default to first available program
-          if (!form.programId && !form.programCode && data.programs.length > 0) {
+          if (!form.programId && !form.programCode) {
+            const firstProg = progList[0];
             setForm((prev) => ({
               ...prev,
-              programId: data.programs[0].id,
-              programCode: data.programs[0].program_code,
+              programId: firstProg.id,
+              programCode: firstProg.program_code || firstProg.programCode || firstProg.code || '',
             }));
+          } else if (form.programCode && !form.programId) {
+            const matched = progList.find((p: any) => (p.program_code === form.programCode || p.programCode === form.programCode || p.code === form.programCode));
+            if (matched) {
+              setForm((prev) => ({ ...prev, programId: matched.id }));
+            }
           }
         }
       })
       .catch((e) => console.warn('Could not load programmes for selector:', e))
       .finally(() => setLoadingPrograms(false));
-  }, []);
+  }, [form.programCode, form.programId]);
 
   const addLoan = () => {
     setForm({ ...form, existingLoans: [...form.existingLoans, { name: '', emi: 0 }] });
@@ -133,6 +142,10 @@ function FinancialAdvisorForm() {
           loanNeeded: form.loanNeeded,
           programId: form.programId ? parseInt(form.programId.toString()) : undefined,
           programCode: form.programCode || undefined,
+          applicant_social_category: user?.socialCategory || undefined,
+          applicant_gender: user?.gender || undefined,
+          is_rural: user?.isRural ?? undefined,
+          is_new_business: business?.isNewBusiness ?? undefined,
         }),
       });
 
@@ -148,7 +161,7 @@ function FinancialAdvisorForm() {
   };
 
   const selectedProgramObj = availablePrograms.find(
-    (p) => (form.programId && p.id === form.programId) || (form.programCode && p.program_code === form.programCode)
+    (p) => (form.programId && p.id === form.programId) || (form.programCode && (p.program_code === form.programCode || p.programCode === form.programCode || p.code === form.programCode))
   );
 
   return (
@@ -212,10 +225,11 @@ function FinancialAdvisorForm() {
                   onChange={(e) => {
                     const pid = parseInt(e.target.value);
                     const prog = availablePrograms.find((p) => p.id === pid);
+                    const code = prog ? (prog.program_code || prog.programCode || prog.code || '') : '';
                     setForm({
                       ...form,
                       programId: pid,
-                      programCode: prog ? prog.program_code : '',
+                      programCode: code,
                     });
                   }}
                   className="w-full px-3 py-2.5 rounded-xl border border-[#CBD5E1] text-xs font-semibold bg-white text-[#0B1736] focus:outline-none focus:ring-2 focus:ring-[#159A68]/20 focus:border-[#159A68] transition-all"
@@ -223,11 +237,16 @@ function FinancialAdvisorForm() {
                   {availablePrograms.length === 0 ? (
                     <option value="">{loadingPrograms ? 'Loading authoritative programmes...' : (form.programCode || 'Target Programme')}</option>
                   ) : (
-                    availablePrograms.map((prog) => (
-                      <option key={prog.id} value={prog.id}>
-                        {prog.program_name} ({prog.program_code}) — {prog.primary_type}
-                      </option>
-                    ))
+                    availablePrograms.map((prog) => {
+                      const progName = prog.program_name || prog.name || prog.scheme_name || 'Government Programme';
+                      const progCode = prog.program_code || prog.programCode || prog.code || String(prog.id);
+                      const progType = prog.primary_type || prog.primaryType || prog.scheme_type || prog.category || 'Assistance';
+                      return (
+                        <option key={prog.id} value={prog.id}>
+                          {progName} ({progCode}) — {progType}
+                        </option>
+                      );
+                    })
                   )}
                 </select>
 

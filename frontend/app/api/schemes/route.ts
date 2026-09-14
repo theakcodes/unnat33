@@ -26,19 +26,30 @@ export async function GET(req: Request) {
         skip,
       });
 
-      // Map to backwards-compatible scheme structure for existing UI components
+      // Map to backwards-compatible scheme structure for existing UI components with additive aliases
       const mappedSchemes = programs.map((p) => ({
         id: p.id,
+        program_code: p.program_code,
         programCode: p.program_code,
+        code: p.program_code,
         name: p.program_name,
+        program_name: p.program_name,
+        programName: p.program_name,
         ministry: p.owning_ministry,
+        owning_ministry: p.owning_ministry,
         nodalAgency: p.nodal_agency,
+        nodal_agency: p.nodal_agency,
         description: p.description || p.benefit_summary,
         benefitSummary: p.benefit_summary,
+        benefit_summary: p.benefit_summary,
         benefitType: p.benefit_type,
+        benefit_type: p.benefit_type,
         primaryType: p.primary_type,
+        primary_type: p.primary_type,
         actionabilityType: p.actionability_type,
+        actionability_type: p.actionability_type,
         officialPortalUrl: p.official_portal_url,
+        official_portal_url: p.official_portal_url,
         sectors: p.sectors,
         status: p.status,
         loanMin: null,
